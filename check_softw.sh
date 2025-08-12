@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# muonato/check_softw.sh @ GitHub (07-NOV-2024)
+# muonato/check_softw.sh @ GitHub (17-JUL-2025)
 #
-# Reports software package version using rpm query or by executing an 
-# arbitrary shell command. Compatible with Nagios monitoring as plugin.
+# Reports software package version using rpm query or runs an arbitrary
+# shell command. Compatible with Nagios monitoring as host plugin.
 #
 # Usage:
 #       bash check_softw.sh <package-name|command> [<package-name|command>] ...
@@ -12,17 +12,18 @@
 #       command[check_softw]=/path/to/plugins/check_softw.sh $ARG1$
 #
 # Parameters:
-#       1..n: package name or shell command
+#       1: Format output (OPTIONAL): 'LF' for line feed (default CSV)
+#       n: package name or shell command
 #
 # Examples:
 #       Check single sw package using rpm query
 #       $ bash check_softw.sh "fubar-one"
 #
-#       Check using rpm query and shell commandline
-#       $ bash check_softw.sh "fubar-one" "psql --version"
+#       Use rpm query and shell commandline, output /w line feed
+#       $ bash check_softw.sh LF "fubar-one" "psql --version"
 #
-#       Nagios plugin expression for two sw packages
-#       check_nrpe -H $HOSTADDRESS$ -c check_softw -a '"fubar-one" "fubar-two"'
+#       Nagios plugin expression for two sw packages, output /w line feed
+#       check_nrpe -H $HOSTADDRESS$ -c check_softw -a '"LF" "fubar-one" "fubar-two"'
 #
 #       Nagios plugin expression for apache in docker container 'foobar'
 #       check_nrpe -H $HOSTADDRESS$ -c check_softw -a '"docker exec foobar apache2 -v"'
@@ -32,28 +33,39 @@
 #       Opsview Core 3.20140409.0
 #
 # BEGIN __main__
-if [[ -z "$1" ]]; then
-    echo -e "check software package version\n\tUsage:\
-    `basename $0` <package-name> [<package-name>] ...\n
-    \tERROR: missing package name"
+ARGS=("$@")
+
+if [[ -z "$ARGS" ]]; then
+    echo -e "Check software version\n\tUsage:\
+    `basename $0` [OPTIONS] <package-name|command> [<package-name>|command] ...\
+        \n\tOPTIONS:\n\t\tLF - Format output with line feed
+        \n\tERROR: missing parameter(s)"
     exit 3
-else
-    MSG=""
 fi
 
-# Loop args to append message
-for (( i=1; i<=$#; i++ )); do
-        ARG=${@:i:1}
+FRMT=", "
+MESG=""
+
+# First parameter formats output
+if [[ ${ARGS[0]} == "LF" ]]; then
+        FRMT="\n"
+        unset ARGS[0]
+fi
+
+# Query rpm when parameter is single word,
+# otherwise execute as shell command
+for ARG in "${ARGS[@]}"; do
         SUM=$(echo $ARG|wc -w)
 
         if [[ $SUM -gt 1 ]]; then
                 VER=$($ARG 2>&1)
         else
-                VER="$ARG $(rpm -qi $ARG|grep -i version)"
+                VER="$ARG $(rpm -qi $ARG|grep -m 1 -i version)"
         fi
 
-        MSG="${MSG}${i}: $VER\n"
+        MESG="${MESG}$VER$FRMT"
 done
 
-# Message excl. line feed
-echo -e ${MSG%??}
+# Exclude last char
+echo -e ${MESG%??}
+exit 0
